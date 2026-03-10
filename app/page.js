@@ -424,7 +424,7 @@ export default function SoFiDashboard() {
                                 step={0.01}
                                 value={item.alloc.toFixed(2)}
                                 onChange={function(e){
-                                  var val = Math.min(budget, Math.max(0, parseFloat(e.target.value)||0));
+                                  var val = Math.max(0, parseFloat(e.target.value)||0);
                                   handleSlider(item.symbol, val);
                                 }}
                                 style={{width:72,fontFamily:"monospace",fontWeight:700,fontSize:14,color:"#1a1a2e",background:"#f8f7f4",border:"1.5px solid #e2e0db",borderRadius:8,padding:"4px 8px",outline:"none",textAlign:"right"}}
@@ -432,7 +432,7 @@ export default function SoFiDashboard() {
                               <span style={{color:"#94a3b8",fontSize:11,minWidth:32,textAlign:"right"}}>{pct}%</span>
                             </div>
                           </div>
-                          <input type="range" min={0} max={budget} step={0.01} value={item.alloc}
+                          <input type="range" min={0} max={Math.max(budget, item.alloc)} step={0.01} value={item.alloc}
                             onChange={function(e){ handleSlider(item.symbol, e.target.value); }}
                             style={{width:"100%",accentColor:typeColor[type],cursor:"pointer"}}/>
                           <div style={{display:"flex",justifyContent:"space-between",marginTop:2}}>
@@ -448,15 +448,20 @@ export default function SoFiDashboard() {
             })}
 
             {/* Totals */}
-            <div style={{background:"#fafaf8",border:"1.5px solid #e2e0db",borderRadius:12,padding:"16px 18px"}}>
+            <div style={{background: remaining<0?"#fef2f2":"#fafaf8", border:"1.5px solid "+(remaining<0?"#fecaca":"#e2e0db"),borderRadius:12,padding:"16px 18px"}}>
               <div style={{display:"flex",justifyContent:"space-between",fontWeight:700,fontSize:15,color:"#1a1a2e"}}>
                 <span>Total Allocated</span>
-                <span style={{fontFamily:"monospace",color:"#16a34a"}}>${totalAllocated.toFixed(2)}</span>
+                <span style={{fontFamily:"monospace",color: remaining<0?"#dc2626":"#16a34a"}}>${totalAllocated.toFixed(2)}</span>
               </div>
-              <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color: remaining<0?"#dc2626":"#94a3b8",marginTop:4}}>
-                <span>{remaining<0?"Over budget by":"Cash remaining"}</span>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginTop:4,color: remaining<0?"#dc2626":"#16a34a",fontWeight: remaining<0?700:400}}>
+                <span>{remaining<0?"⚠ Over budget by":"✓ Cash remaining"}</span>
                 <span style={{fontFamily:"monospace"}}>${Math.abs(remaining).toFixed(2)}</span>
               </div>
+              {remaining<0&&(
+                <div style={{marginTop:8,fontSize:11,color:"#dc2626",background:"#fef2f2",borderRadius:8,padding:"6px 10px"}}>
+                  Your allocation exceeds your ${budget} budget by ${Math.abs(remaining).toFixed(2)}. You can increase your budget above or reduce some positions.
+                </div>
+              )}
             </div>
 
             <div style={{marginTop:14,padding:"14px 18px",background:"#fff7ed",border:"1.5px solid #fed7aa",borderRadius:12,color:"#92400e",fontSize:12,lineHeight:1.7}}>
