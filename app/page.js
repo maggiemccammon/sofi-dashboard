@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { useLiveData } from "../hooks/useLiveData";
 
 const INSTRUMENTS = [
   { symbol: "SPY",  name: "S&P 500 ETF",       type: "ETF",    price: 578.20, change: 0.62,  risk: "Low",      vol: 14 },
@@ -20,11 +21,11 @@ const INSTRUMENTS = [
 ];
 
 function generateHistory(base, vol) {
-  let p = base * 0.91;
-  const arr = [];
-  for (let i = 0; i < 60; i++) {
+  var p = base * 0.91;
+  var arr = [];
+  for (var i = 0; i < 60; i++) {
     p = p * (1 + (Math.random() - 0.47) * (vol / 100) * 0.4);
-    arr.push({ i, price: p });
+    arr.push({ i: i, price: p });
   }
   arr.push({ i: 60, price: base });
   return arr;
@@ -57,7 +58,7 @@ function calcEMA(data, p) {
 }
 
 function scoreInst(inst) {
-  var hist = generateHistory(inst.price, inst.vol);
+  var hist = inst.hist && inst.hist.length > 20 ? inst.hist : generateHistory(inst.price, inst.vol);
   var prices = hist.map(function(h) { return h.price; });
   var rsi = calcRSI(prices);
   var e20 = calcEMA(prices, 20);
@@ -73,13 +74,8 @@ function scoreInst(inst) {
     trend: trend ? "Bullish" : "Bearish",
     macdBull: macdH > 0,
     score: Math.min(100, Math.max(0, 50 + raw)),
-    hist: hist
   };
 }
-
-var SCORED = INSTRUMENTS.map(function(i) {
-  return Object.assign({}, i, scoreInst(i));
-}).sort(function(a, b) { return b.score - a.score; });
 
 var TYPES = ["All", "ETF", "Stock", "Crypto"];
 var riskColor = { Low: "#22c55e", Medium: "#f59e0b", High: "#f97316", "Very High": "#ef4444" };
@@ -92,12 +88,14 @@ function sigColor(s) {
   return s >= 68 ? "#22c55e" : s >= 55 ? "#86efac" : s >= 45 ? "#f59e0b" : s >= 32 ? "#f87171" : "#ef4444";
 }
 function fmtPrice(p) {
+  if (!p) return "—";
   return p >= 1000
     ? p.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
     : p.toFixed(2);
 }
 
 function Sparkline({ hist, up }) {
+  if (!hist || hist.length < 2) return null;
   var prices = hist.map(function(h) { return h.price; });
   var mn = Math.min.apply(null, prices);
   var mx = Math.max.apply(null, prices);
@@ -147,9 +145,7 @@ function AllocationBar({ items }) {
   return (
     <div style={{ display: "flex", height: 8, borderRadius: 99, overflow: "hidden", gap: 1 }}>
       {items.map(function(item, i) {
-        return (
-          <div key={item.symbol} style={{ flex: item.alloc, background: colors[i % colors.length] }} />
-        );
+        return <div key={item.symbol} style={{ flex: item.alloc, background: colors[i % colors.length] }} />;
       })}
     </div>
   );
@@ -171,14 +167,13 @@ function DetailModal({ inst, budget, onClose }) {
           </div>
           <button onClick={onClose} style={{ background: "#f1f5f9", border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: 13, color: "#64748b" }}>✕ Close</button>
         </div>
-
         <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 20 }}>
           <span style={{ fontWeight: 900, fontSize: 28, fontFamily: "monospace", color: "#1a1a2e" }}>${fmtPrice(inst.price)}</span>
           <span style={{ fontWeight: 700, fontSize: 16, color: inst.change >= 0 ? "#16a34a" : "#dc2626" }}>
             {inst.change >= 0 ? "+" : ""}{inst.change}%
           </span>
+          {inst.isLive && <span style={{ fontSize: 10, color: "#22c55e", background: "#f0fdf4", padding: "2px 8px", borderRadius: 20, fontWeight: 600 }}>● LIVE</span>}
         </div>
-
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 20 }}>
           {[
             ["Signal", sigLabel(inst.score), sigColor(inst.score)],
@@ -196,7 +191,6 @@ function DetailModal({ inst, budget, onClose }) {
             );
           })}
         </div>
-
         <div style={{ background: "#f0fdf4", border: "1.5px solid #bbf7d0", borderRadius: 12, padding: "16px 18px" }}>
           <div style={{ fontWeight: 700, fontSize: 13, color: "#166534", marginBottom: 10 }}>With Your ${budget} Budget</div>
           {[10, 25, 50, budget].map(function(amt) {
@@ -222,9 +216,44 @@ export default function SoFiDashboard() {
   var [budget, setBudget] = useState(200);
   var [selected, setSelected] = useState(null);
 
+  var liveData = useLiveData();
+  var quotes = liveData.quotes;
+  var history = liveData.history;
+  var loading = liveData.loading;
+  var error = liveData.error;
+
+  // Merge live data into instruments
+  var INSTRUMENTS_LIVE = INSTRUMENTS.map(function(inst) {
+    var q = quotes[inst.symbol];
+    var h = history[inst.symbol];
+    var livePrice = q && q.price ? q.price : inst.price;
+    var liveChange = q && q.change !== null ? q.change : inst.change;
+    var liveHist = h && h.length > 10 ? h : null;
+    return Object.assign({}, inst, {
+      price: livePrice,
+      change: liveChange,
+      hist: liveHist,
+      isLive: !!(q && q.price),
+    });
+  });
+
+  // Score with live data
+  var SCORED = INSTRUMENTS_LIVE.map(function(i) {
+    return Object.assign({}, i, scoreInst(i));
+  }).sort(function(a, b) { return b.score - a.score; });
+
   var filtered = SCORED.filter(function(i) { return filter === "All" || i.type === filter; });
   var allocation = allocate(SCORED, budget);
   var totalAllocated = allocation.reduce(function(s, i) { return s + i.alloc; }, 0);
+  var liveCount = INSTRUMENTS_LIVE.filter(function(i) { return i.isLive; }).length;
+
+  if (loading) return (
+    <div style={{ minHeight: "100vh", background: "#f8f7f4", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12, fontFamily: "system-ui, sans-serif" }}>
+      <div style={{ width: 36, height: 36, border: "3px solid #e2e0db", borderTopColor: "#1a1a2e", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+      <div style={{ color: "#94a3b8", fontSize: 13 }}>Loading live market data...</div>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
+  );
 
   return (
     <div style={{ minHeight: "100vh", background: "#f8f7f4", fontFamily: "system-ui, sans-serif", color: "#1a1a2e" }}>
@@ -235,11 +264,14 @@ export default function SoFiDashboard() {
           <div style={{ background: "#4ade80", width: 32, height: 32, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, color: "#1a1a2e", fontSize: 16 }}>S</div>
           <div>
             <div style={{ color: "#f8f7f4", fontWeight: 700, fontSize: 16 }}>SoFi Invest Advisor</div>
-            <div style={{ color: "#64748b", fontSize: 11, fontFamily: "monospace" }}>AI-POWERED · $200 BUDGET</div>
+            <div style={{ color: "#64748b", fontSize: 11, fontFamily: "monospace" }}>LIVE DATA · $200 BUDGET</div>
           </div>
         </div>
-        <div style={{ background: "#4ade8022", border: "1px solid #4ade8044", borderRadius: 20, padding: "5px 14px", color: "#4ade80", fontSize: 12 }}>
-          ● SoFi Available
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {error && <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 20, padding: "5px 14px", color: "#dc2626", fontSize: 11 }}>⚠ Using cached prices</div>}
+          <div style={{ background: "#4ade8022", border: "1px solid #4ade8044", borderRadius: 20, padding: "5px 14px", color: "#4ade80", fontSize: 12 }}>
+            ● {liveCount}/{INSTRUMENTS.length} Live
+          </div>
         </div>
       </div>
 
@@ -302,6 +334,7 @@ export default function SoFiDashboard() {
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                           <span style={{ fontWeight: 800, fontSize: 18, color: "#1a1a2e" }}>{inst.symbol}</span>
                           <span style={{ background: typeColor[inst.type] + "22", color: typeColor[inst.type], fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 20 }}>{inst.type}</span>
+                          {inst.isLive && <span style={{ fontSize: 8, color: "#22c55e", fontWeight: 700 }}>●LIVE</span>}
                         </div>
                         <div style={{ color: "#94a3b8", fontSize: 11, marginTop: 2 }}>{inst.name}</div>
                       </div>
@@ -314,7 +347,7 @@ export default function SoFiDashboard() {
                           {inst.change >= 0 ? "▲" : "▼"} {Math.abs(inst.change)}%
                         </div>
                       </div>
-                      <Sparkline hist={inst.hist} up={inst.change >= 0} />
+                      <Sparkline hist={inst.hist || generateHistory(inst.price, inst.vol)} up={inst.change >= 0} />
                     </div>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                       <span style={{ background: sigColor(inst.score) + "18", color: sigColor(inst.score), fontSize: 10, fontWeight: 700, padding: "3px 10px", borderRadius: 20 }}>
@@ -329,7 +362,7 @@ export default function SoFiDashboard() {
           </div>
         )}
 
-        {/* ALLOCATION PLAN */}
+        {/* ALLOCATION */}
         {tab === "allocate" && (
           <div>
             <div style={{ background: "white", border: "1.5px solid #e2e0db", borderRadius: 16, padding: 22, marginBottom: 16 }}>
