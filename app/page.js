@@ -219,6 +219,9 @@ export default function SoFiDashboard() {
   var filtered = SCORED.filter(function(i){ return filter==="All"||i.type===filter; });
   var liveCount = INSTRUMENTS_LIVE.filter(function(i){ return i.isLive; }).length;
 
+  // Stable order ref — set once per profile/budget change, never re-sorted
+  var [lockedOrder, setLockedOrder] = useState(null);
+
   // Base algo allocation (top 8 by score)
   var baseAlloc = useMemo(function(){
     var profile = RISK_PROFILES[riskProfile];
@@ -241,18 +244,24 @@ export default function SoFiDashboard() {
 
   // Initialize slider allocs from base when tab opens or budget/profile changes
   var activeAlloc = useMemo(function(){
-    if(!sliderAllocs) return baseAlloc;
-    return baseAlloc.map(function(item){
-      var manual = sliderAllocs[item.symbol];
-      var alloc = manual !== undefined ? manual : item.alloc;
-      return Object.assign({},item,{ alloc, shares: parseFloat((alloc/item.price).toFixed(4)) });
+    var base = baseAlloc.map(function(item){
+      var manual = sliderAllocs && sliderAllocs[item.symbol] !== undefined ? sliderAllocs[item.symbol] : item.alloc;
+      return Object.assign({},item,{ alloc: manual, shares: parseFloat((manual/item.price).toFixed(4)) });
     });
-  }, [baseAlloc, sliderAllocs]);
+    // Lock order on first render of this alloc set, never re-sort after
+    if(!lockedOrder) {
+      setTimeout(function(){ setLockedOrder(base.map(function(i){ return i.symbol; })); }, 0);
+      return base;
+    }
+    return base.slice().sort(function(a,b){
+      return lockedOrder.indexOf(a.symbol) - lockedOrder.indexOf(b.symbol);
+    });
+  }, [baseAlloc, sliderAllocs, lockedOrder]);
 
   var totalAllocated = activeAlloc.reduce(function(s,i){ return s+i.alloc; },0);
   var remaining = budget - totalAllocated;
 
-  function resetSliders() { setSliderAllocs(null); }
+  function resetSliders() { setSliderAllocs(null); setLockedOrder(null); }
 
   function handleSlider(symbol, newVal) {
     var current = sliderAllocs || {};
@@ -303,7 +312,7 @@ export default function SoFiDashboard() {
             <div style={{display:"flex",alignItems:"center",gap:6}}>
               <span style={{color:"#f8f7f4",fontSize:20,fontFamily:"monospace"}}>$</span>
               <input type="number" value={budget} min={10} max={10000} step={10}
-                onChange={function(e){ setBudget(Math.max(10,Number(e.target.value))); setSliderAllocs(null); }}
+                onChange={function(e){ setBudget(Math.max(10,Number(e.target.value))); setSliderAllocs(null); setLockedOrder(null); }}
                 style={{background:"transparent",border:"none",borderBottom:"1px solid #334155",color:"#4ade80",fontSize:26,fontWeight:700,width:120,fontFamily:"monospace",outline:"none"}}/>
             </div>
           </div>
@@ -313,7 +322,7 @@ export default function SoFiDashboard() {
               {Object.entries(RISK_PROFILES).map(function([key,prof]){
                 var active = riskProfile===key;
                 return (
-                  <button key={key} onClick={function(){ setRiskProfile(key); setSliderAllocs(null); }}
+                  <button key={key} onClick={function(){ setRiskProfile(key); setSliderAllocs(null); setLockedOrder(null); }}
                     style={{background:active?prof.color:"transparent",border:"1.5px solid "+(active?prof.color:"#334155"),color:active?"#1a1a2e":"#64748b",borderRadius:20,padding:"5px 14px",fontSize:11,cursor:"pointer",fontFamily:"inherit",fontWeight:700,transition:"all 0.2s"}}>
                     {prof.label}
                   </button>
