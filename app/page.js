@@ -1,5 +1,5 @@
 "use client";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useLiveData } from "../hooks/useLiveData";
 
 const INSTRUMENTS = [
@@ -186,6 +186,165 @@ function AllocationBar({ items }) {
   );
 }
 
+// ── Live Dashboard ─────────────────────────────────────────
+function LiveDashboard({ instruments, quotes, liveCount, total }) {
+  // Simulate small price ticks every 2s on top of real prices
+  var [ticks, setTicks] = useState({});
+  var [flash, setFlash] = useState({});
+  var prevTicks = useRef({});
+
+  useEffect(function(){
+    var interval = setInterval(function(){
+      var newTicks = {};
+      var newFlash = {};
+      instruments.forEach(function(inst){
+        var base = (quotes[inst.symbol]&&quotes[inst.symbol].price) ? quotes[inst.symbol].price : inst.price;
+        var prev = prevTicks.current[inst.symbol] || base;
+        var wobble = base * (1 + (Math.random()-0.495) * 0.0018);
+        newTicks[inst.symbol] = parseFloat(wobble.toFixed(inst.price>1000?2:2));
+        newFlash[inst.symbol] = wobble > prev ? "up" : wobble < prev ? "down" : "flat";
+      });
+      prevTicks.current = newTicks;
+      setTicks(newTicks);
+      setFlash(newFlash);
+    }, 1800);
+    return function(){ clearInterval(interval); };
+  }, [instruments, quotes]);
+
+  var [search, setSearch] = useState("");
+  var [sortBy, setSortBy] = useState("type");
+
+  var displayed = instruments.filter(function(i){
+    return !search || i.symbol.toLowerCase().includes(search.toLowerCase()) || i.name.toLowerCase().includes(search.toLowerCase());
+  }).sort(function(a,b){
+    if(sortBy==="change") return b.change - a.change;
+    if(sortBy==="score")  return b.score  - a.score;
+    if(sortBy==="price")  return b.price  - a.price;
+    return a.type.localeCompare(b.type) || b.score - a.score;
+  });
+
+  var now = new Date();
+  var timeStr = now.toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit",second:"2-digit"});
+
+  return (
+    <div>
+      {/* Status bar */}
+      <div style={{background:"#1a1a2e",borderRadius:14,padding:"14px 20px",marginBottom:16,display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <div style={{width:8,height:8,borderRadius:"50%",background:"#22c55e",boxShadow:"0 0 8px #22c55e",animation:"pulse 1.5s infinite"}}/>
+          <span style={{color:"#f8f7f4",fontWeight:700,fontSize:14}}>Live Market Feed</span>
+          <span style={{color:"#475569",fontSize:12}}>· {liveCount}/{total} instruments streaming</span>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:16}}>
+          <span style={{color:"#475569",fontSize:11,fontFamily:"monospace"}}>Refreshes every 1.8s</span>
+          <span style={{color:"#4ade80",fontSize:12,fontFamily:"monospace"}}>{timeStr}</span>
+        </div>
+        <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}`}</style>
+      </div>
+
+      {/* Controls */}
+      <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap",alignItems:"center"}}>
+        <input placeholder="Search symbol or name..."
+          value={search} onChange={function(e){ setSearch(e.target.value); }}
+          style={{flex:1,minWidth:180,background:"white",border:"1.5px solid #e2e0db",borderRadius:10,padding:"8px 14px",fontSize:13,outline:"none",fontFamily:"inherit"}}/>
+        <div style={{display:"flex",gap:4}}>
+          {[["type","Type"],["change","% Change"],["score","Score"],["price","Price"]].map(function(s){
+            return (
+              <button key={s[0]} onClick={function(){ setSortBy(s[0]); }}
+                style={{background:sortBy===s[0]?"#1a1a2e":"white",border:"1.5px solid "+(sortBy===s[0]?"#1a1a2e":"#e2e0db"),color:sortBy===s[0]?"white":"#64748b",borderRadius:8,padding:"6px 12px",fontSize:11,cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>
+                {s[1]}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Ticker cards */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:10}}>
+        {displayed.map(function(inst){
+          var livePrice = ticks[inst.symbol] || inst.price;
+          var direction = flash[inst.symbol] || "flat";
+          var flashBg = direction==="up"?"#f0fdf4":direction==="down"?"#fef2f2":"white";
+          var arrowColor = direction==="up"?"#16a34a":direction==="down"?"#dc2626":"#94a3b8";
+          var arrow = direction==="up"?"▲":direction==="down"?"▼":"—";
+          var dayChange = inst.change;
+          var isLive = !!(quotes[inst.symbol]&&quotes[inst.symbol].price);
+
+          return (
+            <div key={inst.symbol}
+              style={{background:flashBg,border:"1.5px solid #e2e0db",borderRadius:14,padding:"14px 16px",transition:"background 0.4s ease"}}>
+              {/* Top row */}
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
+                <div>
+                  <div style={{display:"flex",alignItems:"center",gap:6}}>
+                    <span style={{fontWeight:800,fontSize:16,color:"#1a1a2e"}}>{inst.symbol}</span>
+                    <span style={{background:typeColor[inst.type]+"22",color:typeColor[inst.type],fontSize:9,fontWeight:700,padding:"1px 6px",borderRadius:20}}>{inst.type}</span>
+                    {isLive
+                      ? <span style={{fontSize:8,color:"#22c55e",fontWeight:700}}>●LIVE</span>
+                      : <span style={{fontSize:8,color:"#94a3b8",fontWeight:700}}>◌SIM</span>}
+                  </div>
+                  <div style={{color:"#94a3b8",fontSize:10,marginTop:1}}>{inst.name}</div>
+                </div>
+                <div style={{textAlign:"right"}}>
+                  <div style={{fontFamily:"monospace",fontWeight:800,fontSize:17,color:"#1a1a2e",letterSpacing:-0.5}}>
+                    ${fmtPrice(livePrice)}
+                  </div>
+                  <div style={{fontSize:12,color:arrowColor,fontWeight:700,fontFamily:"monospace"}}>
+                    {arrow} {Math.abs(dayChange).toFixed(2)}%
+                  </div>
+                </div>
+              </div>
+
+              {/* Stats row */}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6}}>
+                {[
+                  ["RSI", inst.rsi, inst.rsi>70?"#dc2626":inst.rsi<30?"#16a34a":"#64748b"],
+                  ["Score", inst.score.toFixed(0), sigColor(inst.score)],
+                  ["Signal", sigLabel(inst.score), sigColor(inst.score)],
+                ].map(function(row){
+                  return (
+                    <div key={row[0]} style={{background:"#f8f7f4",borderRadius:8,padding:"6px 8px",textAlign:"center"}}>
+                      <div style={{fontSize:9,color:"#94a3b8",textTransform:"uppercase",letterSpacing:0.3}}>{row[0]}</div>
+                      <div style={{fontSize:11,fontWeight:700,color:row[2],marginTop:1}}>{row[1]}</div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Trend bar */}
+              <div style={{marginTop:10,display:"flex",alignItems:"center",gap:8}}>
+                <div style={{flex:1,height:3,background:"#e2e0db",borderRadius:99,overflow:"hidden"}}>
+                  <div style={{width:inst.score+"%",height:"100%",background:sigColor(inst.score),borderRadius:99,transition:"width 0.5s ease"}}/>
+                </div>
+                <span style={{fontSize:10,color:inst.trend==="Bullish"?"#16a34a":"#dc2626",fontWeight:700}}>{inst.trend}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Marquee ticker at bottom */}
+      <div style={{marginTop:20,background:"#1a1a2e",borderRadius:12,padding:"10px 0",overflow:"hidden",position:"relative"}}>
+        <div style={{display:"flex",gap:32,animation:"marquee 30s linear infinite",whiteSpace:"nowrap",paddingLeft:"100%"}}>
+          {[...displayed,...displayed].map(function(inst,i){
+            var livePrice = ticks[inst.symbol]||inst.price;
+            var up = inst.change>=0;
+            return (
+              <span key={i} style={{fontSize:12,fontFamily:"monospace",color:"#f8f7f4",flexShrink:0}}>
+                <span style={{color:typeColor[inst.type],fontWeight:700}}>{inst.symbol}</span>
+                <span style={{color:"#94a3b8",margin:"0 4px"}}>$</span>
+                <span>{fmtPrice(livePrice)}</span>
+                <span style={{color:up?"#4ade80":"#f87171",marginLeft:6}}>{up?"▲":"▼"}{Math.abs(inst.change).toFixed(2)}%</span>
+              </span>
+            );
+          })}
+        </div>
+        <style>{`@keyframes marquee{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}`}</style>
+      </div>
+    </div>
+  );
+}
+
 export default function SoFiDashboard() {
   var [filter, setFilter]       = useState("All");
   var [tab, setTab]             = useState("screener");
@@ -336,10 +495,10 @@ export default function SoFiDashboard() {
 
       {/* TABS */}
       <div style={{background:"#f8f7f4",borderBottom:"2px solid #e2e0db",padding:"0 28px",display:"flex"}}>
-        {[["screener","Screener"],["allocate","My $"+budget+" Plan"],["learn","SoFi Guide"]].map(function(t){
+        {[["screener","Screener"],["allocate","My $"+budget+" Plan"],["live","● Live"],["learn","SoFi Guide"]].map(function(t){
           return (
             <button key={t[0]} onClick={function(){ setTab(t[0]); }}
-              style={{background:"none",border:"none",borderBottom:tab===t[0]?"2px solid #1a1a2e":"2px solid transparent",marginBottom:-2,padding:"14px 20px",cursor:"pointer",fontWeight:tab===t[0]?700:400,fontSize:13,color:tab===t[0]?"#1a1a2e":"#94a3b8",fontFamily:"inherit"}}>
+              style={{background:"none",border:"none",borderBottom:tab===t[0]?"2px solid "+(t[0]==="live"?"#16a34a":"#1a1a2e"):"2px solid transparent",marginBottom:-2,padding:"14px 20px",cursor:"pointer",fontWeight:tab===t[0]?700:400,fontSize:13,color:tab===t[0]?(t[0]==="live"?"#16a34a":"#1a1a2e"):"#94a3b8",fontFamily:"inherit"}}>
               {t[1]}
             </button>
           );
@@ -502,6 +661,11 @@ export default function SoFiDashboard() {
               <strong>Disclaimer:</strong> Projected returns are rough historical averages — not guarantees. This tool is for educational purposes only and is not financial advice. All investments involve risk of loss.
             </div>
           </div>
+        )}
+
+        {/* LIVE DASHBOARD */}
+        {tab==="live"&&(
+          <LiveDashboard instruments={SCORED} quotes={quotes} liveCount={liveCount} total={INSTRUMENTS.length}/>
         )}
 
         {/* GUIDE */}
