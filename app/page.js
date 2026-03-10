@@ -71,6 +71,38 @@ function scoreInst(inst) {
   return { rsi, trend: trend?"Bullish":"Bearish", macdBull: macdH>0, score: Math.min(100,Math.max(0,50+raw)) };
 }
 
+// Stable number input — only commits on blur or Enter, no jitter while typing
+function DraftInput({ value, onCommit, style }) {
+  var [draft, setDraft] = useState(String(parseFloat(value).toFixed(2)));
+  var [focused, setFocused] = useState(false);
+
+  // Keep draft in sync when value changes externally (e.g. slider or reset)
+  if (!focused && parseFloat(draft) !== parseFloat(value)) {
+    setDraft(String(parseFloat(value).toFixed(2)));
+  }
+
+  function commit() {
+    var val = Math.max(0, parseFloat(draft) || 0);
+    setDraft(val.toFixed(2));
+    onCommit(val);
+    setFocused(false);
+  }
+
+  return (
+    <input
+      type="number"
+      value={draft}
+      min={0}
+      step={0.01}
+      onFocus={function(){ setFocused(true); }}
+      onChange={function(e){ setDraft(e.target.value); }}
+      onBlur={commit}
+      onKeyDown={function(e){ if(e.key==="Enter") commit(); }}
+      style={style}
+    />
+  );
+}
+
 var TYPES = ["All","ETF","Stock","Crypto"];
 var riskColor = { Low:"#22c55e", Medium:"#f59e0b", High:"#f97316", "Very High":"#ef4444" };
 var typeColor  = { ETF:"#38bdf8", Stock:"#818cf8", Crypto:"#fb923c" };
@@ -417,16 +449,9 @@ export default function SoFiDashboard() {
                             </div>
                             <div style={{display:"flex",alignItems:"center",gap:6}}>
                               <span style={{color:"#94a3b8",fontSize:12,fontFamily:"monospace"}}>$</span>
-                              <input
-                                type="number"
-                                min={0}
-                                max={budget}
-                                step={0.01}
-                                value={item.alloc.toFixed(2)}
-                                onChange={function(e){
-                                  var val = Math.max(0, parseFloat(e.target.value)||0);
-                                  handleSlider(item.symbol, val);
-                                }}
+                              <DraftInput
+                                value={item.alloc}
+                                onCommit={function(val){ handleSlider(item.symbol, val); }}
                                 style={{width:72,fontFamily:"monospace",fontWeight:700,fontSize:14,color:"#1a1a2e",background:"#f8f7f4",border:"1.5px solid #e2e0db",borderRadius:8,padding:"4px 8px",outline:"none",textAlign:"right"}}
                               />
                               <span style={{color:"#94a3b8",fontSize:11,minWidth:32,textAlign:"right"}}>{pct}%</span>
