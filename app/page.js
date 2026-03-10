@@ -410,17 +410,29 @@ export default function SoFiDashboard() {
                       return (
                         <div key={item.symbol}>
                           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-                            <div style={{display:"flex",alignItems:"center",gap:10}}>
+                            <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
                               <span style={{fontWeight:700,fontSize:14,color:"#1a1a2e",minWidth:44}}>{item.symbol}</span>
                               <span style={{color:"#94a3b8",fontSize:12}}>{item.name}</span>
                               <span style={{background:sigColor(item.score)+"18",color:sigColor(item.score),fontSize:9,fontWeight:700,padding:"2px 8px",borderRadius:20}}>{sigLabel(item.score)}</span>
                             </div>
-                            <div style={{textAlign:"right"}}>
-                              <span style={{fontFamily:"monospace",fontWeight:700,fontSize:15,color:"#1a1a2e"}}>${item.alloc.toFixed(2)}</span>
-                              <span style={{color:"#94a3b8",fontSize:11,marginLeft:6}}>{pct}%</span>
+                            <div style={{display:"flex",alignItems:"center",gap:6}}>
+                              <span style={{color:"#94a3b8",fontSize:12,fontFamily:"monospace"}}>$</span>
+                              <input
+                                type="number"
+                                min={0}
+                                max={budget}
+                                step={0.01}
+                                value={item.alloc.toFixed(2)}
+                                onChange={function(e){
+                                  var val = Math.min(budget, Math.max(0, parseFloat(e.target.value)||0));
+                                  handleSlider(item.symbol, val);
+                                }}
+                                style={{width:72,fontFamily:"monospace",fontWeight:700,fontSize:14,color:"#1a1a2e",background:"#f8f7f4",border:"1.5px solid #e2e0db",borderRadius:8,padding:"4px 8px",outline:"none",textAlign:"right"}}
+                              />
+                              <span style={{color:"#94a3b8",fontSize:11,minWidth:32,textAlign:"right"}}>{pct}%</span>
                             </div>
                           </div>
-                          <input type="range" min={0} max={budget} step={1} value={item.alloc}
+                          <input type="range" min={0} max={budget} step={0.01} value={item.alloc}
                             onChange={function(e){ handleSlider(item.symbol, e.target.value); }}
                             style={{width:"100%",accentColor:typeColor[type],cursor:"pointer"}}/>
                           <div style={{display:"flex",justifyContent:"space-between",marginTop:2}}>
